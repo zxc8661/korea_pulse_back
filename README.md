@@ -15,14 +15,18 @@
 | 캐시 | Redis (랭킹 Sorted Set, 없으면 PostgreSQL 폴백) |
 | ORM | Spring Data JPA |
 | 배포 | **미확정** (Railway를 기준 후보로 설계) |
-| 뉴스 공급원 | **미확정**. 빅카인즈 우선 검토, `NewsProvider` 인터페이스 + 네이버 뉴스 검색 기준 구현 |
-| 보조 연동 | NAVER DataLab(일 단위 검색 지수), 외부 트렌드 목록(best-effort), LLM(카테고리 분류 폴백) |
+| 뉴스 공급원 | **NAVER News Search API** (언급량·증가율·Hot Score의 유일한 입력). `NewsProvider` 인터페이스로 교체 가능 |
+| 영상 신호 | **YouTube Data API v3** — 인기 차트 + 뉴스 채널 업로드. `search.list`는 하루 100호출 제한이라 **쓰지 않는다** |
+| 검색 관심도 | **Google Trends API** (알파 신청제). 미승인이면 해당 지표만 비활성 |
+| 보조 연동 | LLM(카테고리 분류 폴백) |
+
+영상·검색 관심도는 **순위와 Hot Score에 들어가지 않는** 상세 전용 보조 지표입니다. 이슈별 커버리지가 불균등해서입니다.
 
 AI 요약, 회원·알림·결제, B2B 키워드 워치는 MVP 범위 밖입니다.
 
 ## 동작 개요
 
-- 스케줄러가 15분(목표 주기)마다 파이프라인을 실행합니다: 후보 키워드 → 뉴스 수집 → 정규화 → 중복 제거 → 키워드 추출 → 이슈 클러스터링 → 카테고리 분류 → 시간 버킷 집계 → Hot Score 계산 → 검색 관심도 조회 → 스냅샷 게시
+- 스케줄러가 15분(목표 주기)마다 파이프라인을 실행합니다: 후보 키워드 → 뉴스 수집 → 정규화 → 중복 제거 → 키워드 추출 → 이슈 클러스터링 → 카테고리 분류 → 시간 버킷 집계 → Hot Score 계산 → 보조 지표(검색·영상) → 스냅샷 게시
 - 조회 API는 게시된 스냅샷만 읽는 읽기 전용 REST API입니다 (MVP는 인증 없음)
 - 순위 기간은 1h·6h·24h·7d이며, 현재 구간 `[T-P, T)`와 비교 구간 `[T-2P, T-P)`를 같은 길이로 맞춰 계산합니다
 
@@ -68,7 +72,10 @@ AI 요약, 회원·알림·결제, B2B 키워드 워치는 MVP 범위 밖입니�
 | `DATABASE_URL` | PostgreSQL 연결 URL (`postgres://` → JDBC 변환 필요) |
 | `REDIS_URL` | Redis 연결 URL. 없으면 랭킹 캐시를 끄고 PostgreSQL로 조회 |
 | `NEWS_PROVIDER` | 사용할 뉴스 공급자 구현 선택 |
-| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 네이버 오픈 API 인증 (뉴스·DataLab 공용) |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 네이버 뉴스 검색 API 인증 |
+| `YOUTUBE_API_KEY` | YouTube Data API v3. 없으면 영상 수집·영상 관심도 비활성 |
+| `YOUTUBE_NEWS_CHANNEL_IDS` | 업로드를 구독할 뉴스 채널 ID (콤마 구분) |
+| `GOOGLE_TRENDS_API_KEY` | Google Trends 알파 자격. 없으면 검색 관심도 비활성 |
 | `LLM_API_KEY` / `LLM_BASE_URL` | 카테고리 분류 폴백 |
 
 ## 팀

@@ -304,18 +304,33 @@ Cache-Control: public, max-age=720
     }
   ],
   "searchInterest": {
-    "index": 87,
-    "asOf": "2026-09-13",
-    "keywordGroup": ["한국은행", "한은"],
-    "periodFrom": "2026-09-07",
-    "periodTo": "2026-09-13",
+    "value": 41.82,
+    "asOf": "2026-09-12",
+    "geo": "KR",
+    "timeUnit": "day",
     "unavailableReason": null
   },
-  "providerNotice": "출처: 네이버 뉴스"
+  "videoInterest": {
+    "videoCount": 7,
+    "viewCountSum": 412905,
+    "statsAsOf": "2026-09-14T13:45:00+09:00",
+    "coverage": "MIXED",
+    "unavailableReason": null,
+    "topVideos": [
+      {
+        "videoId": "dQw4w9WgXcQ",
+        "title": "[속보] 한은, 기준금리 연 2.50% 동결",
+        "channelTitle": "예시뉴스TV",
+        "publishedAt": "2026-09-14T13:10:00+09:00",
+        "viewCount": 152300
+      }
+    ]
+  },
+  "providerNotice": "출처: 네이버 뉴스 / YouTube"
 }
 ```
 
-검색 관심도가 없는 이슈는 `searchInterest: null`이다. `searchInterest`를 내려주는 엔드포인트는 **이곳뿐**이다.
+보조 지표가 없는 이슈는 해당 객체가 null이다. `searchInterest`와 `videoInterest`를 내려주는 엔드포인트는 **이곳뿐**이다. 둘 다 순위·점수와 무관하다(01 문서 6.3절).
 
 순위에 오르지 못한 이슈는 `rank: null`이고 구간 지표는 조회 시점에 같은 규칙으로 계산한다. 단 `hotScore`는 스냅샷 헤더의 정규화 파라미터가 있을 때만 재현하고, 없거나 `period=7d`면 `null` + `notices`에 `SCORE_UNAVAILABLE`을 넣는다(01 문서 3.2.1절). 추정값을 만들지 않는다.
 
@@ -333,7 +348,8 @@ Cache-Control: public, max-age=720
 | firstSeenAt | datetime | 아니오 | topic.first_seen_at | |
 | lastMentionedAt | datetime | 아니오 | topic.last_mentioned_at | |
 | representativeArticles | array (0~3) | 아니오 | article (중복 그룹 대표) | 출처 다양성·최신순 |
-| searchInterest | object | 예 | search_interest_snapshot | 6절 |
+| searchInterest | object | 예 | search_interest_snapshot | 6.1절. Google Trends 알파 미승인이면 항상 null |
+| videoInterest | object | 예 | video, topic_video | 6.2절. 매칭 영상이 없으면 null |
 | providerNotice | string | 아니오 | (설정값) | 공급자별 출처 표기 문자열 |
 
 AI 요약 필드(`summary`, `summaryGeneratedAt`)는 MVP 응답에 없다(01 문서 1.2절).
@@ -521,19 +537,39 @@ AI 요약 필드(`summary`, `summaryGeneratedAt`)는 MVP 응답에 없다(01 문
 
 오류는 `INVALID_PARAMETER`(400), `TOPIC_NOT_FOUND`(404)다.
 
-### 6.1 searchInterest 객체
+### 6.1 searchInterest 객체 (Google Trends)
 
 `/topics/{topicId}` 상세 응답 **전용** 객체다. `/trends`와 `/search`에는 들어가지 않는다(01 문서 6.3절).
 
-| 필드 | 타입 | nullable | 03 컬럼 | 설명 |
+| 필드 | 타입 | nullable | 03 컸럼 | 설명 |
 | --- | --- | --- | --- | --- |
-| index | int (0~100) | 아니오 | search_interest_snapshot.ratio | 상대 지수를 반올림한 정수 |
-| asOf | date | 아니오 | search_interest_snapshot.stat_date | 기준 일자. 보통 전일 |
-| keywordGroup | string[] | 아니오 | search_interest_snapshot.keyword_group | 조회에 사용한 키워드 그룹 |
-| periodFrom, periodTo | date | 아니오 | period_from, period_to | 조회 기간 |
-| unavailableReason | string | 예 | unavailable_reason | 값이 없을 때만 채워지는 사유 |
+| value | float | 아니오 | search_interest_snapshot.scaled_value | **일관 스케일** 검색 관심도. 0~100 재정규화값이 아니므로 백분율로 표시하지 않는다 |
+| asOf | date | 아니오 | search_interest_snapshot.stat_date | 기준 일자. **보통 2일 전**이며 정상이다 |
+| geo | string | 아니오 | geo | ISO 3166-2. MVP는 `KR` |
+| timeUnit | string | 아니오 | time_unit | `day` 고정 |
+| unavailableReason | string | 예 | unavailable_reason | `NO_DATA` / `QUOTA` / `ERROR` / `NO_ACCESS` |
 
-객체 전체가 null이면 검색 데이터가 없다는 뜻이다. 프론트는 "검색 데이터 없음"으로 표시하고, index를 `asOf` 없이 단독 표시하지 않는다. 이 값은 일 단위 상대 지수이며 실시간 검색량이 아니다.
+객체 전체가 null이면 검색 데이터가 없다는 뜻이다. Google Trends API는 알파 신청제이므로 **승인 전에는 모든 이슈가 null**이다. 프론트는 "검색 데이터 없음"으로 표시하고, `value`를 `asOf` 없이 단독 표시하지 않는다. 실시간 검색량이 아니다.
+
+### 6.2 videoInterest 객체 (YouTube)
+
+역시 `/topics/{topicId}` **전용**이다.
+
+| 필드 | 타입 | nullable | 03 컸럼 | 설명 |
+| --- | --- | --- | --- | --- |
+| videoCount | int | 아니오 | count(topic_video) | 현재 구간 매칭 영상 수 |
+| viewCountSum | long | 아니오 | sum(video.view_count) | 관측 조회수 합 |
+| statsAsOf | datetime | 예 | max(video.stats_updated_at) | 조회수 관측 시각. 쿼터 축퇴 중이면 구버전이다 |
+| coverage | string | 아니오 | video.discovered_via 집계 | `POPULAR` / `CHANNEL` / `MIXED` |
+| unavailableReason | string | 예 | | `NO_MATCH` / `QUOTA` / `ERROR` / `NO_ACCESS` |
+| topVideos[] | 배열 (0~3) | 아니오 | video | `match_score` 내림차순 |
+| topVideos[].videoId | string | 아니오 | video.video_id | `https://www.youtube.com/watch?v={videoId}`로 링크한다 |
+| topVideos[].title | string | 아니오 | video.title | |
+| topVideos[].channelTitle | string | 아니오 | video.channel_title | |
+| topVideos[].publishedAt | datetime | 아니오 | video.published_at | |
+| topVideos[].viewCount | long | 예 | video.view_count | 아직 관측 전이면 null |
+
+객체 전체가 null이면 **"이 이슈의 영상이 없다"가 아니라 "우리가 보는 범위에서 못 찾았다"**는 뜻이다. 키워드 검색을 쓰지 않고 인기 차트와 지정 뉴스 채널만 보기 때문이다(정의서 §5.2). 프론트는 `videoCount`를 이슈 간 비교에 쓰지 않고, 영상은 링크아웃 또는 공식 임베드로만 노출한다.
 
 ---
 
@@ -667,6 +703,8 @@ DB 연결이 끊긴 경우에만 503이며 Actuator 형식으로 응답한다. �
 
 ## 9. 에러 코드
 
+외부 보조 소스(Google Trends, YouTube)의 장애는 **어느 엔드포인트도 오류로 만들지 않는다**. 해당 객체를 null로 내리고 200을 준다.
+
 | 상태 | code | 발생 엔드포인트 | 상황 |
 | --- | --- | --- | --- |
 | 400 | `INVALID_CATEGORY` | trends | 조회 코드 6종 밖의 category |
@@ -714,7 +752,9 @@ DB 연결이 끊긴 경우에만 503이며 Actuator 형식으로 응답한다. �
 | 3절 `/topics/{id}` | 01 문서 3.2.1, 03 문서 3.6·3.7 |
 | 4절 `/timeline` | 01 문서 3.2.2, 03 문서 3.10·3.11 |
 | 5절 `/articles` | 01 문서 3.2.3과 9절, 03 문서 3.2·3.3 |
-| 6절 `/related-keywords`, searchInterest | 01 문서 3.2.4·6절, 03 문서 3.8·3.14 |
+| 6절 `/related-keywords` | 01 문서 3.2.4절, 03 문서 3.8 |
+| 6.1절 searchInterest | 01 문서 6.1절, 03 문서 3.14, 정의서 §5.3 |
+| 6.2절 videoInterest | 01 문서 6.2절, 03 문서 3.15·3.16, 정의서 §5.2 |
 | 7절 `/search` | 01 문서 기능 3, 03 문서 3.5 |
 | 8절 `/health` | 02 문서 8.4절, 03 문서 3.1 |
 | 1.6절 캐시 | 02 문서 4장 Redis 랭킹, 9장 성능 가정 |
